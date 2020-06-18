@@ -10,7 +10,6 @@ use Afosto\Acme\Data\Order;
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\RequestException;
-use League\Flysystem\Filesystem;
 use Psr\Http\Message\ResponseInterface;
 
 class Client
@@ -81,11 +80,6 @@ class Client
     protected $accountKey;
 
     /**
-     * @var Filesystem
-     */
-    protected $filesystem;
-
-    /**
      * @var array
      */
     protected $directories = [];
@@ -116,23 +110,24 @@ class Client
      * @param array $config
      *
      * @type string $mode The mode for ACME (production / staging)
-     * @type Filesystem $fs Filesystem for storage of static data
-     * @type string $basePath The base path for the filesystem (used to store account information and csr / keys
      * @type string $username The acme username
+     * @type string $key RSA private key
      * }
      */
     public function __construct($config = [])
     {
         $this->config = $config;
-        if ($this->getOption('fs', false)) {
-            $this->filesystem = $this->getOption('fs');
-        } else {
-            throw new \LogicException('No filesystem option supplied');
-        }
 
         if ($this->getOption('username', false) === false) {
             throw new \LogicException('Username not provided');
         }
+
+        if (array_key_exists('key', $config)) {
+            $this->accountKey = openssl_pkey_get_private($config['key']);
+        } else {
+            throw new \LogicException('Account key not provided');
+        }
+
 
         $this->init();
     }
@@ -147,7 +142,7 @@ class Client
     public function getOrder($id): Order
     {
         $url = str_replace('new-order', 'order', $this->getUrl(self::DIRECTORY_NEW_ORDER));
-        $url = $url . '/' . $this->getAccount()->getId() . '/' . $id;
+        $url .= '/' . $this->getAccount()->getId() . '/' . $id;
         $response = $this->request($url, $this->signPayloadKid(null, $url));
         $data = json_decode((string)$response->getBody(), true);
 
@@ -479,25 +474,23 @@ class Client
 
         //Prepare LE account
         $this->loadKeys();
-        $this->tosAgree();
+//        $this->tosAgree();
         $this->account = $this->getAccount();
     }
 
     /**
      * Load the keys in memory
      *
-     * @throws \League\Flysystem\FileExistsException
-     * @throws \League\Flysystem\FileNotFoundException
      */
     protected function loadKeys()
     {
         //Make sure a private key is in place
-        if ($this->getFilesystem()->has($this->getPath('account.pem')) === false) {
-            $this->getFilesystem()->write($this->getPath('account.pem'), Helper::getNewKey());
-        }
-        $privateKey = $this->getFilesystem()->read($this->getPath('account.pem'));
-        $privateKey = openssl_pkey_get_private($privateKey);
-        $this->privateKeyDetails = openssl_pkey_get_details($privateKey);
+//        if ($this->getFilesystem()->has($this->getPath('account.pem')) === false) {
+//            $this->getFilesystem()->write($this->getPath('account.pem'), Helper::getNewKey());
+//        }
+//        $privateKey = $this->getFilesystem()->read($this->getPath('account.pem'));
+//        $privateKey = openssl_pkey_get_private($privateKey);
+//        $this->privateKeyDetails = openssl_pkey_get_details($privateKey);
     }
 
     /**
@@ -535,15 +528,6 @@ class Client
             'basePath',
             'le'
         ) . DIRECTORY_SEPARATOR . $userDirectory . ($path === null ? '' : DIRECTORY_SEPARATOR . $path);
-    }
-
-    /**
-     * Return the Flysystem filesystem
-     * @return Filesystem
-     */
-    protected function getFilesystem(): Filesystem
-    {
-        return $this->filesystem;
     }
 
     /**
@@ -629,11 +613,6 @@ class Client
      */
     protected function getAccountKey()
     {
-        if ($this->accountKey === null) {
-            $this->accountKey = openssl_pkey_get_private($this->getFilesystem()
-                ->read($this->getPath('account.pem')));
-        }
-
         if ($this->accountKey === false) {
             throw new \Exception('Invalid account key');
         }
