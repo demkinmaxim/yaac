@@ -352,7 +352,7 @@ class Client
         $data = json_decode((string)$response->getBody(), true);
         $accountURL = $response->getHeaderLine('Location');
         $date = (new \DateTime())->setTimestamp(strtotime($data['createdAt']));
-        return new Account($data['contact'], $date, ($data['status'] == 'valid'), $data['initialIp'], $accountURL);
+        return new Account($data['contact'], $date, ($data['status'] === 'valid'), $data['initialIp'], $accountURL);
     }
 
     /**
@@ -474,7 +474,7 @@ class Client
 
         //Prepare LE account
         $this->loadKeys();
-//        $this->tosAgree();
+        $this->tosAgree();
         $this->account = $this->getAccount();
     }
 
@@ -553,7 +553,7 @@ class Client
      * @return string
      * @throws \Exception
      */
-    protected function getDigest(): string
+    public function getDigest(): string
     {
         if ($this->digest === null) {
             $this->digest = Helper::toSafeString(hash('sha256', json_encode($this->getJWKHeader()), true));
@@ -628,10 +628,13 @@ class Client
      */
     protected function getJWKHeader(): array
     {
+        $keyDetails = Helper::getKeyDetails($this->getAccountKey());
+
         return [
-            'e'   => Helper::toSafeString(Helper::getKeyDetails($this->getAccountKey())['rsa']['e']),
-            'kty' => 'RSA',
-            'n'   => Helper::toSafeString(Helper::getKeyDetails($this->getAccountKey())['rsa']['n']),
+            'crv' => 'P-256',
+            'kty' => 'EC',
+            'x'   => Helper::toSafeString($keyDetails['ec']['x']),
+            'y'   => Helper::toSafeString($keyDetails['ec']['y']),
         ];
     }
 
@@ -650,7 +653,7 @@ class Client
             $this->nonce = $response->getHeaderLine('replay-nonce');
         }
         return [
-            'alg'   => 'RS256',
+            'alg'   => 'ES256',
             'jwk'   => $this->getJWKHeader(),
             'nonce' => $this->nonce,
             'url'   => $url
@@ -670,7 +673,7 @@ class Client
         $nonce = $response->getHeaderLine('replay-nonce');
 
         return [
-            "alg"   => "RS256",
+            "alg"   => "ES256",
             "kid"   => $this->account->getAccountURL(),
             "nonce" => $nonce,
             "url"   => $url
@@ -697,10 +700,11 @@ class Client
             throw new \Exception('Could not sign');
         }
 
+
         return [
             'protected' => $protected,
             'payload'   => $payload,
-            'signature' => Helper::toSafeString($signature),
+            'signature' => Helper::toSafeString(Helper::DERtoECDSA($signature, 64)),
         ];
     }
 
@@ -726,7 +730,7 @@ class Client
         return [
             'protected' => $protected,
             'payload'   => $payload,
-            'signature' => Helper::toSafeString($signature),
+            'signature' => Helper::toSafeString(Helper::DERtoECDSA($signature, 64)),
         ];
     }
 }
