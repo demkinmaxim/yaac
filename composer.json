@@ -24,7 +24,7 @@
     }
   },
   "require": {
-    "guzzlehttp/guzzle": "^7",
+    "guzzlehttp/guzzle": "^6.3",
     "ext-openssl": "*",
     "ext-json": "*"
   }
